@@ -1,6 +1,31 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Helper to get API Key from various possible sources
+const getApiKey = () => {
+  // 1. Try Vite's standard env (prefixed with VITE_)
+  // 2. Try the injected process.env (from vite.config.ts define)
+  return import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
+};
+
+const apiKey = getApiKey();
+
+// Initialize AI client lazily or with a check to avoid "API Key must be set" crash at load time
+let aiInstance: GoogleGenAI | null = null;
+
+function getAIInstance() {
+  if (!aiInstance) {
+    const key = getApiKey();
+    if (!key) {
+      console.error("GEMINI_API_KEY is missing! Please set VITE_GEMINI_API_KEY in your deployment environment (e.g., Netlify).");
+      // We return a dummy instance to avoid immediate crash, 
+      // but it will fail with a clear error on the first request.
+      aiInstance = new GoogleGenAI({ apiKey: "MISSING_API_KEY" });
+    } else {
+      aiInstance = new GoogleGenAI({ apiKey: key });
+    }
+  }
+  return aiInstance;
+}
 
 export interface BaZiPillar {
   stem: string;
@@ -40,6 +65,7 @@ export async function analyzeBaZi(
   birthTime: string,
   gender: string
 ): Promise<BaZiAnalysis> {
+  const ai = getAIInstance();
   const prompt = `วิเคราะห์ดวงชะตาตามหลักโป๊ยอักษร (BaZi - Four Pillars of Destiny) สำหรับบุคคลนี้:
 ชื่อ: ${name}
 วันเกิด: ${birthDate} (ค.ศ.)
