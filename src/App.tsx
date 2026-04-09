@@ -29,6 +29,7 @@ import { analyzeBaZi } from './services/geminiService';
 import { calculateBaZi } from './lib/bazi-helper';
 import { useBaziStore } from './store/useBaziStore';
 
+// BaZi Harmony - Version 1.1.0 - Updated with Gemini 3 Flash and Vibrant UI
 export default function App() {
   const { 
     appState: state, 
