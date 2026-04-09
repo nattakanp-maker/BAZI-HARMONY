@@ -85,9 +85,17 @@ export default function App() {
       );
       setAnalysis(result);
       setState('result');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("เกิดข้อผิดพลาดในการวิเคราะห์ กรุณาลองใหม่อีกครั้ง");
+      let errorMessage = "เกิดข้อผิดพลาดในการวิเคราะห์ กรุณาลองใหม่อีกครั้ง";
+      
+      if (error?.message?.includes("API_KEY_INVALID") || error?.message?.includes("API key not valid")) {
+        errorMessage = "API Key ไม่ถูกต้อง กรุณาตรวจสอบการตั้งค่าใน Netlify";
+      } else if (error?.message?.includes("MISSING_API_KEY") || !import.meta.env.VITE_GEMINI_API_KEY) {
+        errorMessage = "ไม่พบ API Key กรุณาตั้งค่า VITE_GEMINI_API_KEY ใน Environment Variables ของ Netlify";
+      }
+      
+      alert(errorMessage);
       setState('input');
     } finally {
       clearInterval(interval);
