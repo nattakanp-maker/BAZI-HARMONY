@@ -47,6 +47,24 @@ export default function App() {
   });
   
   const [loadingMessage, setLoadingMessage] = useState('กำลังเชื่อมต่อกับดวงดาว...');
+  const [showKeySetup, setShowKeySetup] = useState(false);
+  const [tempKey, setTempKey] = useState('');
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
+
+  const checkApiKey = () => {
+    const key = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY_OVERRIDE');
+    return !!key && key !== "MISSING_API_KEY" && key !== "";
+  };
+
+  const hasKey = checkApiKey();
+
+  const handleSaveKey = () => {
+    if (tempKey.trim()) {
+      localStorage.setItem('GEMINI_API_KEY_OVERRIDE', tempKey.trim());
+      setShowKeySetup(false);
+      window.location.reload(); // Reload to apply key
+    }
+  };
 
   const messages = [
     'กำลังคำนวณรหัสลับ 8 ตัวอักษร...',
@@ -64,6 +82,7 @@ export default function App() {
     
     setFormData(localFormData);
     setState('loading');
+    setErrorDetail(null);
     
     // Cycle through messages
     let msgIndex = 0;
@@ -73,6 +92,12 @@ export default function App() {
     }, 2500);
 
     try {
+      if (!checkApiKey()) {
+        setShowKeySetup(true);
+        setState('input');
+        return;
+      }
+
       // Local calculation for immediate context (could be used to enhance prompt)
       const localBazi = calculateBaZi(localFormData.birthDate, localFormData.birthTime);
       console.log("Local BaZi calculation:", localBazi);
@@ -86,16 +111,20 @@ export default function App() {
       setAnalysis(result);
       setState('result');
     } catch (error: any) {
-      console.error(error);
+      console.error("Analysis Error:", error);
       let errorMessage = "เกิดข้อผิดพลาดในการวิเคราะห์ กรุณาลองใหม่อีกครั้ง";
       
       if (error?.message?.includes("API_KEY_INVALID") || error?.message?.includes("API key not valid")) {
         errorMessage = "API Key ไม่ถูกต้อง กรุณาตรวจสอบการตั้งค่าใน Netlify";
       } else if (error?.message?.includes("MISSING_API_KEY") || !import.meta.env.VITE_GEMINI_API_KEY) {
-        errorMessage = "ไม่พบ API Key กรุณาตั้งค่า VITE_GEMINI_API_KEY ใน Environment Variables ของ Netlify";
+        errorMessage = "ไม่พบ API Key กรุณาตั้งค่า VITE_GEMINI_API_KEY ใน Environment Variables ของ Netlify หรือใช้ระบบกรอก Key ด้วยตนเอง";
+      } else if (error?.message?.includes("429") || error?.message?.includes("Quota exceeded")) {
+        errorMessage = "โควตาการใช้งาน (Token) หมดชั่วคราว กรุณารอ 1 นาทีแล้วลองใหม่อีกครั้ง (Gemini รุ่นฟรีมีขีดจำกัดต่อนาที)";
+      } else if (error?.message?.includes("JSON")) {
+        errorMessage = "ระบบตอบกลับข้อมูลผิดพลาด กรุณาลองใหม่อีกครั้ง";
       }
       
-      alert(errorMessage);
+      setErrorDetail(errorMessage);
       setState('input');
     } finally {
       clearInterval(interval);
@@ -111,7 +140,7 @@ export default function App() {
   ] : [];
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] text-[#2D2D2D] relative overflow-hidden font-sans selection:bg-indigo-100">
+    <div className="min-h-screen bg-vibrant text-slate-900 relative overflow-hidden font-sans selection:bg-indigo-100">
       {/* Vibrant Background Blobs */}
       <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-indigo-200/30 rounded-full blur-[120px] pointer-events-none animate-pulse" />
       <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-rose-200/30 rounded-full blur-[100px] pointer-events-none animate-pulse" style={{ animationDelay: '1s' }} />
@@ -138,6 +167,68 @@ export default function App() {
 
       <main className="relative z-10 max-w-2xl mx-auto px-6 py-12">
         <AnimatePresence mode="wait">
+          {showKeySetup && (
+            <motion.div
+              key="keysetup"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm"
+            >
+              <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-indigo-100">
+                <div className="flex flex-col items-center text-center">
+                  <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center mb-6">
+                    <LucideShieldCheck className="text-indigo-600 w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl font-serif font-bold text-indigo-900 mb-2">ต้องใช้ API Key เพื่อเริ่มต้น</h2>
+                  <p className="text-gray-600 mb-8 text-sm">
+                    ดูเหมือนว่าระบบยังไม่ได้ตั้งค่า API Key กรุณานำ API Key จาก Google AI Studio มาวางที่นี่เพื่อเริ่มใช้งาน (ข้อมูลนี้จะถูกเก็บไว้ในเครื่องของคุณเท่านั้น)
+                  </p>
+                  
+                  <input
+                    type="password"
+                    placeholder="วาง API Key ที่นี่..."
+                    value={tempKey}
+                    onChange={(e) => setTempKey(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none mb-4 text-center font-mono text-sm"
+                  />
+                  
+                  <div className="flex gap-3 w-full">
+                    <button
+                      onClick={handleSaveKey}
+                      className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+                    >
+                      บันทึกและเริ่มใช้งาน
+                    </button>
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('GEMINI_API_KEY_OVERRIDE');
+                        window.location.reload();
+                      }}
+                      className="px-4 py-3 rounded-xl font-bold text-rose-500 hover:bg-rose-50 transition-all text-xs"
+                    >
+                      ล้างค่าเดิม
+                    </button>
+                    <button
+                      onClick={() => setShowKeySetup(false)}
+                      className="px-4 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-all text-xs"
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                  
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="mt-6 text-xs text-indigo-600 hover:underline"
+                  >
+                    รับ API Key ได้ที่นี่ (ฟรี)
+                  </a>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {state === 'input' && (
             <motion.div
               key="input"
@@ -146,6 +237,26 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="flex flex-col justify-center min-h-[80vh]"
             >
+              {errorDetail && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-8 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-3 text-rose-700 text-sm"
+                >
+                  <LucideInfo className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold mb-1">เกิดข้อผิดพลาด</p>
+                    <p>{errorDetail}</p>
+                    <button 
+                      onClick={() => setErrorDetail(null)}
+                      className="mt-2 text-xs font-bold underline"
+                    >
+                      ตกลง
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Logo & Symbol */}
               <div className="flex flex-col items-center mb-12">
                 <div className="relative mb-6">
@@ -155,6 +266,18 @@ export default function App() {
                       <span className="text-4xl font-serif text-indigo-600">八</span>
                     </div>
                   </div>
+                  
+                  {/* API Key Status Badge */}
+                  <div 
+                    onClick={() => setShowKeySetup(true)}
+                    className={`absolute -bottom-2 -right-2 px-2 py-1 rounded-full text-[10px] font-bold border cursor-pointer transition-all ${
+                      hasKey 
+                        ? 'bg-green-50 text-green-600 border-green-200' 
+                        : 'bg-rose-50 text-rose-600 border-rose-200 animate-bounce'
+                    }`}
+                  >
+                    {hasKey ? '● API Connected' : '○ API Missing'}
+                  </div>
                 </div>
                 <h1 className="text-4xl font-serif font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-indigo-700 via-purple-600 to-rose-600 uppercase">BaZi Harmony</h1>
                 <div className="h-[1px] w-24 bg-gradient-to-r from-transparent via-indigo-400 to-transparent mt-2" />
@@ -162,7 +285,7 @@ export default function App() {
               </div>
 
               {/* Input Form Card (Glassmorphism Style) */}
-              <div className="backdrop-blur-xl bg-white/70 rounded-[40px] shadow-[0_20px_60px_rgba(99,102,241,0.1)] border border-white/80 p-8 md:p-12 space-y-8">
+              <div className="glass-card rounded-[40px] p-8 md:p-12 space-y-8">
                 <div className="space-y-6">
                   {/* Input Group: Name */}
                   <div className="relative">
@@ -228,7 +351,7 @@ export default function App() {
 
                 <button
                   onClick={handleStart}
-                  className="group relative w-full overflow-hidden rounded-2xl bg-indigo-600 p-6 font-bold text-white transition-all hover:bg-indigo-700 active:scale-[0.98] shadow-xl shadow-indigo-200"
+                  className="group relative w-full overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-rose-500 p-6 font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] shadow-2xl shadow-indigo-200/50"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   <span className="relative flex items-center justify-center gap-3 tracking-[0.2em] ml-2 text-lg">
@@ -322,7 +445,7 @@ export default function App() {
               </div>
 
               {/* Elements Chart */}
-              <div className="bg-white/60 backdrop-blur-xl rounded-[3rem] p-8 shadow-xl shadow-amber-100/20 border border-white">
+              <div className="glass-card rounded-[3rem] p-8">
                 <h3 className="text-center font-black text-xs tracking-[0.3em] uppercase mb-8 text-slate-400">ความสมดุล 5 ธาตุ</h3>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -360,7 +483,7 @@ export default function App() {
 
               {/* Detailed Insights */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-lg shadow-indigo-100/10 border border-white">
+                <div className="glass-card rounded-[2.5rem] p-8">
                   <h4 className="font-serif font-bold text-slate-800 text-xl mb-4 flex items-center gap-2">
                     <LucideHeart size={20} className="text-rose-500" /> ตัวตนและบุคลิก
                   </h4>
@@ -368,7 +491,7 @@ export default function App() {
                     {analysis.personality}
                   </p>
                 </div>
-                <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-lg shadow-indigo-100/10 border border-white">
+                <div className="glass-card rounded-[2.5rem] p-8">
                   <h4 className="font-serif font-bold text-slate-800 text-xl mb-4 flex items-center gap-2">
                     <LucideBriefcase size={20} className="text-blue-500" /> การงาน
                   </h4>
@@ -376,7 +499,7 @@ export default function App() {
                     {analysis.career}
                   </p>
                 </div>
-                <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-lg shadow-indigo-100/10 border border-white">
+                <div className="glass-card rounded-[2.5rem] p-8">
                   <h4 className="font-serif font-bold text-slate-800 text-xl mb-4 flex items-center gap-2">
                     <LucideUsers size={20} className="text-purple-500" /> คู่ครองและความสัมพันธ์
                   </h4>
@@ -384,7 +507,7 @@ export default function App() {
                     {analysis.spouse}
                   </p>
                 </div>
-                <div className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-lg shadow-indigo-100/10 border border-white">
+                <div className="glass-card rounded-[2.5rem] p-8">
                   <h4 className="font-serif font-bold text-slate-800 text-xl mb-4 flex items-center gap-2">
                     <LucideShieldCheck size={20} className="text-emerald-500" /> สุขภาพตามธาตุ
                   </h4>
